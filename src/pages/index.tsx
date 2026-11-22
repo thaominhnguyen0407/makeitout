@@ -5,15 +5,33 @@
  */
 
 import { Link } from 'react-router-dom'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Check, X } from 'lucide-react'
 import { Seo } from '../components/Seo'
 import { seo } from '../seo'
 
 const STEPS = [
   ['Send one link', 'Start a trip and drop the link in the group chat. Nobody has to sign up.'],
   ['Everyone adds two things', 'Where they’re flying from and what they can spend, all in.'],
-  ['See what fits', 'Destinations ranked by whether everyone can afford them, with estimated flights and stay.'],
+  ['See what could fit', 'Places ranked by whether everyone could afford them, using rough estimates of flights and stay.'],
   ['Vote it out', 'Votes update live for the whole group. The favourite rises to the top.'],
+] as const
+
+const GOOD_FOR = [
+  'Brainstorming where the group could go, including 2–3 city trips',
+  'Spotting places that are clearly out of someone’s budget',
+  'Getting everyone’s starting city, budget and votes in one place',
+]
+
+const NOT_FOR = [
+  'Live fares or hotel prices — nothing is searched or booked',
+  'Your dates: no seasons, holidays or last-minute price jumps',
+  'Extras like activities, visas, insurance or baggage fees',
+]
+
+const HOW = [
+  ['Flights', 'From the straight-line distance between cities, cheaper inside budget-airline markets (Europe, Southeast Asia, and within India, Mexico and Brazil).'],
+  ['Stay', 'Nights × a typical mid-range daily cost per person for shared lodging, food and getting around.'],
+  ['Multi-city', 'A one-way flight in, travel between stops, a one-way flight home, and the nights split across the stops.'],
 ] as const
 
 export default function Landing() {
@@ -37,7 +55,7 @@ export default function Landing() {
               </h1>
               <p className="mt-6 max-w-lg text-lg text-muted-foreground">
                 Everyone says where they’re flying from and what they can spend. makeitout shows the places
-                that fit every budget, and the group votes live.
+                that could fit every budget, and the group votes live.
               </p>
               <Link
                 to="/new"
@@ -45,7 +63,13 @@ export default function Landing() {
               >
                 Start a trip <ArrowRight className="size-4" />
               </Link>
-              <p className="mt-3 text-sm text-muted-foreground">Free. No accounts. Takes a minute.</p>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Free. No accounts. Takes a minute.{' '}
+                <a href="#what-to-expect" className="underline underline-offset-2 hover:text-foreground">
+                  Prices are estimates
+                </a>
+                .
+              </p>
             </div>
 
             <BoardingPass />
@@ -62,10 +86,69 @@ export default function Landing() {
               ))}
             </ol>
           </section>
+
+          <section id="what-to-expect" className="scroll-mt-6 border-t border-border py-14">
+            <p className="mb-3 text-xs uppercase tracking-[0.25em] text-primary">What to expect</p>
+            <h2 className="max-w-2xl font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+              A starting point for the group chat, not a price search
+            </h2>
+            <p className="mt-4 max-w-2xl text-muted-foreground">
+              Every price in makeitout is an estimate, worked out from distance and typical local costs. It’s
+              meant to help your group narrow down ideas quickly. Real prices can be quite a bit higher or lower,
+              so the research and booking are up to you.
+            </p>
+
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-border bg-card p-6">
+                <h3 className="font-semibold">Good for</h3>
+                <ul className="mt-3 space-y-2.5 text-sm">
+                  {GOOD_FOR.map((item) => (
+                    <li key={item} className="flex gap-2.5">
+                      <Check className="mt-0.5 size-4 shrink-0 text-[#1f7a4d]" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-2xl border border-border bg-card p-6">
+                <h3 className="font-semibold">Not included</h3>
+                <ul className="mt-3 space-y-2.5 text-sm">
+                  {NOT_FOR.map((item) => (
+                    <li key={item} className="flex gap-2.5">
+                      <X className="mt-0.5 size-4 shrink-0 text-[#b4442a]" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <h3 className="mt-10 font-semibold">How the estimates work</h3>
+            <dl className="mt-3 grid gap-5 text-sm sm:grid-cols-3">
+              {HOW.map(([term, body]) => (
+                <div key={term}>
+                  <dt className="font-medium">{term}</dt>
+                  <dd className="mt-1 text-muted-foreground">{body}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-5 text-sm text-muted-foreground">
+              All prices are per person, in USD. You can pick from 200 destinations and 218 starting cities.
+            </p>
+
+            <div className="mt-8 rounded-2xl bg-foreground px-6 py-5 text-background">
+              <p className="font-semibold">Before anyone books</p>
+              <p className="mt-1 text-sm opacity-80">
+                Once the group has a favourite, check real flights and places to stay for your actual dates on
+                a flight or travel search site. Treat the numbers here as a rough guide.
+              </p>
+            </div>
+          </section>
         </main>
 
         <footer className="mx-auto max-w-6xl border-t border-border px-5 py-6 text-xs text-muted-foreground sm:px-8">
-          Prices are rough estimates from distance and typical local costs, not live fares.
+          Prices are rough estimates from distance and typical local costs, not live fares. Check real prices
+          before you book.
         </footer>
       </div>
     </>
@@ -108,6 +191,7 @@ function BoardingPass() {
             </li>
           ))}
         </ul>
+        <p className="mt-5 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Sample · estimated prices</p>
       </div>
     </div>
   )
