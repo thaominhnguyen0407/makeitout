@@ -1,13 +1,13 @@
 /**
  * Landing page — a STATIC page (no DeepSpace providers), prerendered at build.
- * "Start a trip" mints a random trip id client-side and opens /t/<id>.
+ * "Start a trip" is a real link to /new (which mints the trip id), so it
+ * works even if tapped before the page hydrates.
  */
 
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import { Seo } from '../components/Seo'
 import { seo } from '../seo'
-import { newTripId } from '../lib/trips'
 
 const STEPS = [
   ['Send one link', 'Start a trip and drop the link in the group chat. Nobody has to sign up.'],
@@ -17,9 +17,6 @@ const STEPS = [
 ] as const
 
 export default function Landing() {
-  const navigate = useNavigate()
-  const start = () => navigate(`/t/${newTripId()}`)
-
   return (
     <>
       <Seo {...seo} path="/" />
@@ -42,13 +39,12 @@ export default function Landing() {
                 Everyone says where they’re flying from and what they can spend. makeitout shows the places
                 that fit every budget, and the group votes live.
               </p>
-              <button
-                type="button"
-                onClick={start}
+              <Link
+                to="/new"
                 className="mt-9 inline-flex items-center gap-2 rounded-full bg-primary px-7 py-3.5 text-base font-semibold text-primary-foreground transition-transform hover:-translate-y-0.5"
               >
                 Start a trip <ArrowRight className="size-4" />
-              </button>
+              </Link>
               <p className="mt-3 text-sm text-muted-foreground">Free. No accounts. Takes a minute.</p>
             </div>
 
