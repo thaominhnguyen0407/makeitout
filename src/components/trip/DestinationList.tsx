@@ -26,8 +26,20 @@ function groupByCountry(rows: DestinationRow[]): [string, DestinationRow[]][] {
 }
 
 export function DestinationList({ trip }: { trip: TripState }) {
-  const { rows, routeRows, routesAllowed, travelers, me, myVote, myDownvotes, voteMut, downvoteMut, leader, nights } =
-    trip
+  const {
+    rows,
+    routeRows,
+    routesAllowed,
+    travelers,
+    me,
+    myLikes,
+    myDownvotes,
+    toggleLike,
+    toggleDownvote,
+    votesReady,
+    leader,
+    nights,
+  } = trip
   const { warning, error } = useToast()
   const [mode, setMode] = useState<Mode>('single')
   const [filter, setFilter] = useState<Filter>('fits')
@@ -40,41 +52,19 @@ export function DestinationList({ trip }: { trip: TripState }) {
   const shown =
     filter === 'fits' ? list.filter((r) => r.allFit || r.voters.length > 0 || r.downvoters.length > 0) : list
 
-  async function vote(destId: string) {
+  async function act(action: (destId: string) => Promise<void>, destId: string, failure: string) {
     if (!me) {
       warning('Add yourself first', 'Join the trip on the left, then vote.')
       return
     }
     try {
-      // Liking a place takes back your downvote on it.
-      const down = myDownvotes.get(destId)
-      if (down) await downvoteMut.removeConfirmed(down.recordId)
-      if (myVote?.data.destinationId === destId) await voteMut.removeConfirmed(myVote.recordId)
-      else if (myVote) await voteMut.putConfirmed(myVote.recordId, { destinationId: destId })
-      else await voteMut.createConfirmed({ travelerId: me.recordId, destinationId: destId })
+      await action(destId)
     } catch (e) {
-      error('Vote didn’t go through', e instanceof Error ? e.message : String(e))
+      error(failure, e instanceof Error ? e.message : String(e))
     }
   }
-
-  async function downvote(destId: string) {
-    if (!me) {
-      warning('Add yourself first', 'Join the trip on the left, then vote.')
-      return
-    }
-    try {
-      const down = myDownvotes.get(destId)
-      if (down) {
-        await downvoteMut.removeConfirmed(down.recordId)
-        return
-      }
-      // You can't like and dislike the same place.
-      if (myVote?.data.destinationId === destId) await voteMut.removeConfirmed(myVote.recordId)
-      await downvoteMut.createConfirmed({ travelerId: me.recordId, destinationId: destId })
-    } catch (e) {
-      error('Downvote didn’t go through', e instanceof Error ? e.message : String(e))
-    }
-  }
+  const vote = (destId: string) => act(toggleLike, destId, 'Vote didn’t go through')
+  const downvote = (destId: string) => act(toggleDownvote, destId, 'Downvote didn’t go through')
 
   // The same route can appear under several countries, so a card's key (and
   // which one is expanded) includes its group.
@@ -85,13 +75,13 @@ export function DestinationList({ trip }: { trip: TripState }) {
         key={key}
         row={row}
         groupSize={travelers.length}
-        isMine={myVote?.data.destinationId === row.id}
+        isMine={myLikes.has(row.id)}
         isMyDownvote={myDownvotes.has(row.id)}
         expanded={open === key}
         onToggle={() => setOpen(open === key ? null : key)}
         onVote={() => vote(row.id)}
         onDownvote={() => downvote(row.id)}
-        canVote={voteMut.ready && downvoteMut.ready}
+        canVote={votesReady}
       />
     )
   }
@@ -172,7 +162,7 @@ export function DestinationList({ trip }: { trip: TripState }) {
           Estimated per person, {nights} {nights === 1 ? 'night' : 'nights'},{' '}
           {mode === 'single' ? 'round-trip flight' : 'flights + travel between stops'}
           <br />
-          Vote = +1 · downvote = −{DOWNVOTE_WEIGHT}
+          Vote for as many as you like: +1 each · downvote = −{DOWNVOTE_WEIGHT}
         </p>
       </div>
 

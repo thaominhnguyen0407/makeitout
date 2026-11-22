@@ -47,7 +47,13 @@ export const travelersSchema: CollectionSchema = {
   permissions: openTo(['name', 'originId', 'budget']),
 }
 
-/** One vote per traveler; changing your pick updates the same row. */
+/**
+ * LEGACY: the original one-vote-per-traveler collection. New votes go to
+ * `likes`; these rows are still read (and can be removed) so votes cast
+ * before unlimited voting keep counting. Kept unchanged on purpose: a room
+ * never drops an old UNIQUE index, so editing `uniqueOn` here would not take
+ * effect for trips that already exist.
+ */
 export const votesSchema: CollectionSchema = {
   name: 'votes',
   columns: [
@@ -55,6 +61,17 @@ export const votesSchema: CollectionSchema = {
     { name: 'destinationId', storage: 'text', interpretation: 'plain', required: true },
   ],
   uniqueOn: ['travelerId'],
+  permissions: openTo(['travelerId', 'destinationId']),
+}
+
+/** Votes: a traveler can like any number of places, each place once. */
+export const likesSchema: CollectionSchema = {
+  name: 'likes',
+  columns: [
+    { name: 'travelerId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
+    { name: 'destinationId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
+  ],
+  uniqueOn: ['travelerId', 'destinationId'],
   permissions: openTo(['travelerId', 'destinationId']),
 }
 
@@ -73,9 +90,16 @@ export const downvotesSchema: CollectionSchema = {
   permissions: openTo(['travelerId', 'destinationId']),
 }
 
-export const tripSchemas: CollectionSchema[] = [tripInfoSchema, travelersSchema, votesSchema, downvotesSchema]
+export const tripSchemas: CollectionSchema[] = [
+  tripInfoSchema,
+  travelersSchema,
+  votesSchema,
+  likesSchema,
+  downvotesSchema,
+]
 
 export type TripInfo = { key: string; name: string; nights: number }
 export type Traveler = { name: string; originId: string; budget: number }
 export type Vote = { travelerId: string; destinationId: string }
+export type Like = { travelerId: string; destinationId: string }
 export type Downvote = { travelerId: string; destinationId: string }

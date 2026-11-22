@@ -60,7 +60,7 @@ test('create a trip, join, and vote for a multi-city route', async ({ page }) =>
  * so the place stops being the favourite; liking it again takes the
  * downvote back.
  */
-test('a downvote outweighs upvotes, live for everyone', async ({ browser }) => {
+test('unlimited votes; a downvote outweighs upvotes, live for everyone', async ({ browser }) => {
   const a = await (await browser.newContext()).newPage()
   const b = await (await browser.newContext()).newPage()
   const errors = [...captureConsoleErrors(a), ...captureConsoleErrors(b)]
@@ -87,6 +87,19 @@ test('a downvote outweighs upvotes, live for everyone', async ({ browser }) => {
   await card(a).getByRole('button', { name: /^Vote/ }).click()
   await expect(b.getByText('Group favourite so far')).toBeVisible()
   await expect(card(b).getByText('Score +1')).toBeVisible()
+
+  // Votes are unlimited: Ana also likes Porto, and keeps her Lisbon vote.
+  const porto = (page: typeof a) => page.locator('li', { has: page.locator('h3', { hasText: /^Porto$/ }) })
+  await porto(a).getByRole('button', { name: /^Vote/ }).click()
+  await expect(porto(b).getByText('Score +1')).toBeVisible()
+  await expect(card(b).getByText('Score +1')).toBeVisible()
+  await expect(card(a).getByRole('button', { name: /^Voted/ })).toBeVisible()
+  await expect(porto(a).getByRole('button', { name: /^Voted/ })).toBeVisible()
+  await expect(b.getByText('Tied for the lead')).toBeVisible()
+  await expect(a.getByText('voted on 2')).toBeVisible()
+  // Taking back the Porto vote leaves Lisbon alone.
+  await porto(a).getByRole('button', { name: /^Voted/ }).click()
+  await expect(porto(b).getByText(/^Score/)).toHaveCount(0)
 
   // Ben really doesn't: +1 − 3 = −2, so there's no favourite any more.
   await card(b).getByRole('button', { name: 'Downvote' }).click()

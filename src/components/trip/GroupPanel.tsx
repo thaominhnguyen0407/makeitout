@@ -8,7 +8,7 @@ import { formatUsd, getCity } from '../../lib/places'
 
 /** Left column: join / your entry, then everyone in the group. */
 export function GroupPanel({ trip }: { trip: TripState }) {
-  const { me, travelers, travelerMut, voteMut, myVote, downvoteMut, myDownvotes, setMyId } = trip
+  const { me, travelers, travelerMut, removeMyVotes, setMyId } = trip
   const { success, error } = useToast()
   const [editing, setEditing] = useState(false)
 
@@ -18,8 +18,7 @@ export function GroupPanel({ trip }: { trip: TripState }) {
     if (!me) return
     if (!window.confirm('Remove yourself from this trip? Your votes go too.')) return
     try {
-      if (myVote) await voteMut.removeConfirmed(myVote.recordId)
-      for (const d of myDownvotes.values()) await downvoteMut.removeConfirmed(d.recordId)
+      await removeMyVotes()
       await travelerMut.removeConfirmed(me.recordId)
       setMyId(null)
       setEditing(false)
@@ -122,7 +121,12 @@ export function GroupPanel({ trip }: { trip: TripState }) {
         ) : (
           <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
             {travelers.map((t) => {
-              const voted = trip.votes.some((v) => v.data.travelerId === t.recordId)
+              const count = new Set(
+                [...trip.likes, ...trip.downvotes.map((d) => d.data)]
+                  .filter((v) => v.travelerId === t.recordId)
+                  .map((v) => v.destinationId),
+              ).size
+              const voted = count > 0
               return (
                 <li key={t.recordId} className="flex items-center gap-3 px-4 py-2.5">
                   <PersonDot id={t.recordId} name={t.data.name} size="sm" />
@@ -138,7 +142,7 @@ export function GroupPanel({ trip }: { trip: TripState }) {
                   <div className="text-right">
                     <p className="text-sm tabular-nums">{formatUsd(t.data.budget)}</p>
                     <p className={voted ? 'text-xs text-primary' : 'text-xs text-muted-foreground'}>
-                      {voted ? 'voted' : 'not voted'}
+                      {voted ? `voted on ${count}` : 'not voted'}
                     </p>
                   </div>
                 </li>

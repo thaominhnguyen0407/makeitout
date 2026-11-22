@@ -5,7 +5,7 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { useMutations, useQuery, type RecordData } from 'deepspace'
-import type { Downvote, TripInfo, Traveler, Vote } from '../../schemas/trip-schemas'
+import type { Downvote, Like, TripInfo, Traveler, Vote } from '../../schemas/trip-schemas'
 import {
   DESTINATIONS,
   estimateTrip,
@@ -103,6 +103,8 @@ function makeRow(
 }
 
 type Voters = Pick<DestinationRow, 'voters' | 'downvoters'>
+/** An upvote from either the legacy `votes` collection or `likes`. */
+type UpVote = Like & { recordId: string; legacy: boolean }
 const NO_VOTERS: Voters = { voters: [], downvoters: [] }
 
 function routeRow(route: Route, nights: number, priced: Priced[], { voters, downvoters }: Voters) {
@@ -129,12 +131,14 @@ function routeRow(route: Route, nights: number, priced: Priced[], { voters, down
 export function useTrip(tripId: string) {
   const info = useQuery<TripInfo>('trip_info')
   const travelersQ = useQuery<Traveler>('travelers', { orderBy: 'createdAt', orderDir: 'asc' })
-  const votesQ = useQuery<Vote>('votes')
+  const legacyVotesQ = useQuery<Vote>('votes')
+  const likesQ = useQuery<Like>('likes')
   const downvotesQ = useQuery<Downvote>('downvotes')
 
   const infoMut = useMutations<TripInfo>('trip_info')
   const travelerMut = useMutations<Traveler>('travelers')
-  const voteMut = useMutations<Vote>('votes')
+  const legacyVoteMut = useMutations<Vote>('votes')
+  const likeMut = useMutations<Like>('likes')
   const downvoteMut = useMutations<Downvote>('downvotes')
 
   const [myId, setMyIdState] = useState<string | null>(() => getMyTravelerId(tripId))
@@ -153,12 +157,25 @@ export function useTrip(tripId: string) {
 
   const me = myId ? (travelerById.get(myId) ?? null) : null
 
-  // Ignore votes from people who have since left.
-  const votes = useMemo(
-    () => votesQ.records.filter((v) => travelerById.has(v.data.travelerId)),
-    [votesQ.records, travelerById],
+  // Every upvote, from either collection. Ignore people who have since left.
+  const likes = useMemo<UpVote[]>(
+    () =>
+      [
+        ...legacyVotesQ.records.map((r) => ({ ...r.data, recordId: r.recordId, legacy: true })),
+        ...likesQ.records.map((r) => ({ ...r.data, recordId: r.recordId, legacy: false })),
+      ].filter((v) => travelerById.has(v.travelerId)),
+    [legacyVotesQ.records, likesQ.records, travelerById],
   )
-  const myVote = me ? (votes.find((v) => v.data.travelerId === me.recordId) ?? null) : null
+  /** My upvotes, keyed by option id (several if a legacy vote and a like overlap). */
+  const myLikes = useMemo(() => {
+    const map = new Map<string, UpVote[]>()
+    if (me) {
+      for (const v of likes) {
+        if (v.travelerId === me.recordId) map.set(v.destinationId, [...(map.get(v.destinationId) ?? []), v])
+      }
+    }
+    return map
+  }, [likes, me])
   const downvotes = useMemo(
     () => downvotesQ.records.filter((v) => travelerById.has(v.data.travelerId)),
     [downvotesQ.records, travelerById],
@@ -184,16 +201,18 @@ export function useTrip(tripId: string) {
       if (!e) map.set(id, (e = { voters: [], downvoters: [] }))
       return e
     }
-    for (const v of votes) {
-      const t = travelerById.get(v.data.travelerId)
-      if (t) entry(v.data.destinationId).voters.push(t)
+    for (const v of likes) {
+      const t = travelerById.get(v.travelerId)
+      const e = entry(v.destinationId)
+      // A legacy vote and a like on the same place from one person count once.
+      if (t && !e.voters.includes(t)) e.voters.push(t)
     }
     for (const v of downvotes) {
       const t = travelerById.get(v.data.travelerId)
       if (t) entry(v.data.destinationId).downvoters.push(t)
     }
     return map
-  }, [votes, downvotes, travelerById])
+  }, [likes, downvotes, travelerById])
 
   const rows = useMemo<DestinationRow[]>(
     () =>
@@ -261,11 +280,53 @@ export function useTrip(tripId: string) {
     return { rows: liked.filter((r) => r.score === top), score: top }
   }, [rows, routeRows])
 
+  const removeLikes = useCallback(
+    async (records: UpVote[]) => {
+      for (const v of records) {
+        await (v.legacy ? legacyVoteMut : likeMut).removeConfirmed(v.recordId)
+      }
+    },
+    [legacyVoteMut, likeMut],
+  )
+
+  /** Vote for a place, or take the vote back. Voting takes back your downvote on it. */
+  const toggleLike = useCallback(
+    async (destId: string) => {
+      if (!me) return
+      const mine = myLikes.get(destId)
+      if (mine) return removeLikes(mine)
+      const down = myDownvotes.get(destId)
+      if (down) await downvoteMut.removeConfirmed(down.recordId)
+      await likeMut.createConfirmed({ travelerId: me.recordId, destinationId: destId })
+    },
+    [me, myLikes, myDownvotes, removeLikes, downvoteMut, likeMut],
+  )
+
+  /** Downvote a place, or take it back. Downvoting takes back your vote on it. */
+  const toggleDownvote = useCallback(
+    async (destId: string) => {
+      if (!me) return
+      const down = myDownvotes.get(destId)
+      if (down) return void (await downvoteMut.removeConfirmed(down.recordId))
+      const mine = myLikes.get(destId)
+      if (mine) await removeLikes(mine)
+      await downvoteMut.createConfirmed({ travelerId: me.recordId, destinationId: destId })
+    },
+    [me, myLikes, myDownvotes, removeLikes, downvoteMut],
+  )
+
+  /** Remove all of my votes and downvotes (used when leaving the trip). */
+  const removeMyVotes = useCallback(async () => {
+    await removeLikes([...myLikes.values()].flat())
+    for (const d of myDownvotes.values()) await downvoteMut.removeConfirmed(d.recordId)
+  }, [myLikes, myDownvotes, removeLikes, downvoteMut])
+
   return {
     status:
       info.status === 'ready' &&
       travelersQ.status === 'ready' &&
-      votesQ.status === 'ready' &&
+      legacyVotesQ.status === 'ready' &&
+      likesQ.status === 'ready' &&
       downvotesQ.status === 'ready'
         ? ('ready' as const)
         : info.status === 'error' || travelersQ.status === 'error'
@@ -274,11 +335,15 @@ export function useTrip(tripId: string) {
     tripInfo,
     nights,
     travelers,
-    votes,
     me,
-    myVote,
+    likes,
+    myLikes,
     downvotes,
     myDownvotes,
+    toggleLike,
+    toggleDownvote,
+    removeMyVotes,
+    votesReady: legacyVoteMut.ready && likeMut.ready && downvoteMut.ready,
     rows,
     routeRows,
     routesAllowed,
@@ -286,8 +351,6 @@ export function useTrip(tripId: string) {
     setMyId,
     infoMut,
     travelerMut,
-    voteMut,
-    downvoteMut,
   }
 }
 
