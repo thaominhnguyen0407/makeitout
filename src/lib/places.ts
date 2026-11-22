@@ -4,7 +4,8 @@
  * Prices are ESTIMATES in USD, not quotes:
  *  - Flight: a distance-based round-trip economy fare (great-circle distance,
  *    a per-km rate that tapers on long hauls), times a per-destination factor
- *    for places that are pricier or harder to reach. Under 150 km we assume
+ *    for places that are pricier or harder to reach, halved inside
+ *    budget-airline markets (see BUDGET_REGIONS). Under 150 km we assume
  *    ground travel.
  *  - Stay: nights × a mid-range daily cost per person (shared lodging, food,
  *    local transport).
@@ -310,6 +311,40 @@ export function distanceKm(a: City, b: City): number {
 
 const roundTo = (n: number, step: number) => Math.round(n / step) * step
 
+// ── Budget-airline markets ─────────────────────────────────────────────
+// Where low-cost carriers dominate short flights, real fares run far below
+// the distance formula (Ryanair ≈ 1/3 of Southwest per km; India is the
+// cheapest domestic market per km). Flights inside these markets get
+// BUDGET_FACTOR. Sources: IATA/ICAO low-cost-carrier share by region,
+// Rome2rio 2018 flight price ranking, Kiwi.com price index.
+export const BUDGET_FACTOR = 0.5
+
+/** Both cities anywhere in one of these regions → budget fare. */
+const BUDGET_REGIONS: ReadonlySet<string>[] = [
+  // Europe, plus Türkiye and Morocco, which European budget airlines serve heavily.
+  new Set([
+    'Albania', 'Austria', 'Belgium', 'Bosnia and Herzegovina', 'Bulgaria', 'Croatia', 'Czechia',
+    'Denmark', 'Estonia', 'Finland', 'France', 'Germany', 'Greece', 'Hungary', 'Iceland', 'Ireland',
+    'Italy', 'Latvia', 'Lithuania', 'Malta', 'Montenegro', 'Netherlands', 'Norway', 'Poland',
+    'Portugal', 'Romania', 'Serbia', 'Slovenia', 'Spain', 'Sweden', 'Switzerland', 'United Kingdom',
+    'Türkiye', 'Morocco',
+  ]),
+  // Southeast Asia.
+  new Set(['Thailand', 'Vietnam', 'Malaysia', 'Singapore', 'Indonesia', 'Philippines', 'Cambodia', 'Laos']),
+]
+
+/**
+ * Both cities in the same one of these countries → budget fare. Flights to
+ * their neighbours stay at the normal rate (across Latin America, budget
+ * airlines are rare outside Mexico and Brazil).
+ */
+const BUDGET_DOMESTIC: ReadonlySet<string> = new Set(['India', 'Mexico', 'Brazil'])
+
+export function isBudgetMarket(a: City, b: City): boolean {
+  if (a.country === b.country && BUDGET_DOMESTIC.has(a.country)) return true
+  return BUDGET_REGIONS.some((region) => region.has(a.country) && region.has(b.country))
+}
+
 /** Estimated round-trip economy fare in USD. */
 export function estimateFlight(from: City, to: Destination): number {
   const km = distanceKm(from, to)
@@ -319,7 +354,8 @@ export function estimateFlight(from: City, to: Destination): number {
     0.12 * Math.min(km, 1500) +
     0.08 * Math.min(Math.max(km - 1500, 0), 3500) +
     0.07 * Math.max(km - 5000, 0)
-  return roundTo(fare * to.fareFactor, 10)
+  const market = isBudgetMarket(from, to) ? BUDGET_FACTOR : 1
+  return roundTo(fare * to.fareFactor * market, 10)
 }
 
 export interface CostEstimate {
