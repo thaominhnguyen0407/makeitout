@@ -44,3 +44,32 @@
   --color-shell: #fafafa;
   --color-shell-panel: #ffffff;
 }
+
+/* Boarding — makeitout's theme: warm paper, ink, vermilion. */
+[data-theme="boarding"] {
+  color-scheme: light;
+  --color-background: #f6f1e7;
+  --color-foreground: #1f1b16;
+  --color-card: #fffcf5;
+  --color-card-foreground: #1f1b16;
+  --color-popover: #fffcf5;
+  --color-popover-foreground: #1f1b16;
+  --color-primary: #d4472a;
+  --color-primary-foreground: #fffaf2;
+  --color-secondary: #ece4d4;
+  --color-secondary-foreground: #1f1b16;
+  --color-muted: #ece4d4;
+  --color-muted-foreground: #6e6555;
+  --color-accent: #efe7d7;
+  --color-accent-foreground: #1f1b16;
+  --color-destructive: #b4302a;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #e1d7c4;
+  --color-input: #d9ceb9;
+  --color-ring: #d4472a;
+  --radius: 0.75rem;
+  --shadow-card: 0 1px 0 rgba(60, 40, 10, 0.04);
+  --shadow-card-hover: 0 4px 14px -6px rgba(60, 40, 10, 0.18);
+  --color-shell: #f6f1e7;
+  --color-shell-panel: #fffcf5;
+}

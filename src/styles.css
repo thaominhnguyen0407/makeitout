@@ -39,6 +39,10 @@
   --color-ring: #818cf8;
   --radius: 0.5rem;
 
+  /* makeitout type: Fraunces for display, Instrument Sans for UI */
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+
   /*
    * Map the rounded-* utilities onto --radius so a theme (or you) can change
    * the app's shape language in one place. At the default 0.5rem these equal

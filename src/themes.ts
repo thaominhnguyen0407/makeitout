@@ -18,6 +18,11 @@
 
 export const THEMES = [
   {
+    id: 'boarding',
+    label: 'Boarding',
+    description: 'Warm paper with vermilion accents, like a printed boarding pass.',
+  },
+  {
     id: 'slate',
     label: 'Slate',
     description: 'Neutral dark placeholder default. Replace with your own theme.',
