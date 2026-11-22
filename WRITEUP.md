@@ -9,7 +9,7 @@
 ## What it does
 
 A friend group shares one link. Each person adds where they're flying from
-and the total they can spend. The app ranks 45 destinations by whether the
+and the total they can spend. The app ranks 200 destinations, plus 2–3 stop multi-city trips, by whether the
 estimated cost (round-trip flight + share of the stay) fits **everyone's**
 budget, and the group votes live. No accounts.
 
@@ -64,8 +64,8 @@ Why the app uses estimates instead of live fares for now:
 
 - **It needs inputs the app doesn't have yet.** Real fares need specific
   dates and airport codes; this flow happens *before* a group picks dates.
-- **The fan-out is wrong for the main view.** Ranking 45 destinations for 5
-  people is 225 searches ≈ $7.30 per trip, and slow, every time inputs change.
+- **The fan-out is wrong for the main view.** Ranking 200 destinations for 5
+  people is 1,000 searches ≈ $32.50 per trip, and slow, every time inputs change.
 - **Estimates are good enough to filter**, which is the job of this screen.
 
 Where it *would* earn its place: an on-demand "check real fares" for the
@@ -80,8 +80,12 @@ if the reasoning is stated.
 - Prices are heuristics: distance-based fare (tapering per-km rate ×
   per-destination factor) + nights × typical daily cost. USD only.
   **Not yet compared against real fares.**
-- Fixed list: 45 destinations, ~105 departure cities. Unlisted cities can't
+- Fixed list: 200 destinations, 218 departure cities. Unlisted cities can't
   be entered.
+- Multi-city trips: 2–3 stops, each ≤ 900 km from the next and ≥ 2 nights
+  long. A one-way fare is estimated as half a round trip; short hops are
+  priced as train/bus. At most 40 routes are shown (half 2-stop, half
+  3-stop), each city in ≤ 2 per length, so the list stays varied (`src/lib/routes.ts`).
 - Open permissions (see tradeoff). No rate limiting, and trips never expire.
 - Leaving deletes your vote and then your traveler row as two writes; if the
   second fails, the votes list filters out orphaned votes anyway.
