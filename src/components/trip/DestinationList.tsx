@@ -1,25 +1,44 @@
 import { useState } from 'react'
-import { Check, ChevronDown, Plane, Trophy, X } from 'lucide-react'
+import { Check, ChevronDown, Plane, ThumbsDown, Trophy, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { formatUsd } from '../../lib/places'
 import { useToast } from '../ui'
 import { PersonDot } from './Person'
-import type { DestinationRow, TripState } from './useTrip'
+import { DOWNVOTE_WEIGHT, type DestinationRow, type TripState } from './useTrip'
 
 type Filter = 'fits' | 'all'
 type Mode = 'single' | 'route'
+type Sort = 'budget' | 'country'
+
+/**
+ * Group options under each country they visit, countries A→Z. A multi-city
+ * route appears under every one of its countries. Within a country the
+ * incoming (budget) order is kept.
+ */
+function groupByCountry(rows: DestinationRow[]): [string, DestinationRow[]][] {
+  const groups = new Map<string, DestinationRow[]>()
+  for (const row of rows) {
+    for (const country of new Set(row.stops.map((s) => s.country))) {
+      groups.set(country, [...(groups.get(country) ?? []), row])
+    }
+  }
+  return [...groups].sort(([a], [b]) => a.localeCompare(b))
+}
 
 export function DestinationList({ trip }: { trip: TripState }) {
-  const { rows, routeRows, routesAllowed, travelers, me, myVote, voteMut, leader, nights } = trip
+  const { rows, routeRows, routesAllowed, travelers, me, myVote, myDownvotes, voteMut, downvoteMut, leader, nights } =
+    trip
   const { warning, error } = useToast()
   const [mode, setMode] = useState<Mode>('single')
   const [filter, setFilter] = useState<Filter>('fits')
+  const [sort, setSort] = useState<Sort>('budget')
   const [open, setOpen] = useState<string | null>(null)
 
   const list = mode === 'single' ? rows : routeRows
   const fitting = list.filter((r) => r.allFit)
   // An option someone already voted for stays visible even if it no longer fits.
-  const shown = filter === 'fits' ? list.filter((r) => r.allFit || r.voters.length > 0) : list
+  const shown =
+    filter === 'fits' ? list.filter((r) => r.allFit || r.voters.length > 0 || r.downvoters.length > 0) : list
 
   async function vote(destId: string) {
     if (!me) {
@@ -27,12 +46,54 @@ export function DestinationList({ trip }: { trip: TripState }) {
       return
     }
     try {
+      // Liking a place takes back your downvote on it.
+      const down = myDownvotes.get(destId)
+      if (down) await downvoteMut.removeConfirmed(down.recordId)
       if (myVote?.data.destinationId === destId) await voteMut.removeConfirmed(myVote.recordId)
       else if (myVote) await voteMut.putConfirmed(myVote.recordId, { destinationId: destId })
       else await voteMut.createConfirmed({ travelerId: me.recordId, destinationId: destId })
     } catch (e) {
       error('Vote didn’t go through', e instanceof Error ? e.message : String(e))
     }
+  }
+
+  async function downvote(destId: string) {
+    if (!me) {
+      warning('Add yourself first', 'Join the trip on the left, then vote.')
+      return
+    }
+    try {
+      const down = myDownvotes.get(destId)
+      if (down) {
+        await downvoteMut.removeConfirmed(down.recordId)
+        return
+      }
+      // You can't like and dislike the same place.
+      if (myVote?.data.destinationId === destId) await voteMut.removeConfirmed(myVote.recordId)
+      await downvoteMut.createConfirmed({ travelerId: me.recordId, destinationId: destId })
+    } catch (e) {
+      error('Downvote didn’t go through', e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  // The same route can appear under several countries, so a card's key (and
+  // which one is expanded) includes its group.
+  function card(row: DestinationRow, group = '') {
+    const key = `${group}:${row.id}`
+    return (
+      <DestinationCard
+        key={key}
+        row={row}
+        groupSize={travelers.length}
+        isMine={myVote?.data.destinationId === row.id}
+        isMyDownvote={myDownvotes.has(row.id)}
+        expanded={open === key}
+        onToggle={() => setOpen(open === key ? null : key)}
+        onVote={() => vote(row.id)}
+        onDownvote={() => downvote(row.id)}
+        canVote={voteMut.ready && downvoteMut.ready}
+      />
+    )
   }
 
   if (travelers.length === 0) {
@@ -62,12 +123,12 @@ export function DestinationList({ trip }: { trip: TripState }) {
             </p>
           </div>
           <p className="ml-auto shrink-0 text-sm tabular-nums opacity-80">
-            {leader.votes} of {travelers.length} {travelers.length === 1 ? 'vote' : 'votes'}
+            {leader.score} {leader.score === 1 ? 'point' : 'points'}
           </p>
         </div>
       )}
 
-      <div className="mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <Segmented
           label="Trip type"
           value={mode}
@@ -80,6 +141,21 @@ export function DestinationList({ trip }: { trip: TripState }) {
             ['route', `Multi-city · ${routeRows.filter((r) => r.allFit).length} fit`],
           ]}
         />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Sort</span>
+          <Segmented
+            label="Sort by"
+            value={sort}
+            onChange={(v) => {
+              setSort(v)
+              setOpen(null)
+            }}
+            options={[
+              ['budget', 'Budget'],
+              ['country', 'Country A–Z'],
+            ]}
+          />
+        </div>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -95,6 +171,8 @@ export function DestinationList({ trip }: { trip: TripState }) {
         <p className="text-xs text-muted-foreground">
           Estimated per person, {nights} {nights === 1 ? 'night' : 'nights'},{' '}
           {mode === 'single' ? 'round-trip flight' : 'flights + travel between stops'}
+          <br />
+          Vote = +1 · downvote = −{DOWNVOTE_WEIGHT}
         </p>
       </div>
 
@@ -108,21 +186,22 @@ export function DestinationList({ trip }: { trip: TripState }) {
         </div>
       ) : shown.length === 0 ? (
         <NothingFits rows={list} mode={mode} onShowAll={() => setFilter('all')} />
-      ) : (
-        <ul className="space-y-2.5">
-          {shown.map((row) => (
-            <DestinationCard
-              key={row.id}
-              row={row}
-              groupSize={travelers.length}
-              isMine={myVote?.data.destinationId === row.id}
-              expanded={open === row.id}
-              onToggle={() => setOpen(open === row.id ? null : row.id)}
-              onVote={() => vote(row.id)}
-              canVote={voteMut.ready}
-            />
+      ) : sort === 'country' ? (
+        <div className="space-y-6">
+          {groupByCountry(shown).map(([country, group]) => (
+            <section key={country} aria-label={country} data-testid="country-group">
+              <h2 className="mb-2 flex items-baseline gap-2 border-b border-border pb-1.5 font-display text-base font-semibold">
+                {country}
+                <span className="text-xs font-normal text-muted-foreground">
+                  {group.length} {group.length === 1 ? 'option' : 'options'}
+                </span>
+              </h2>
+              <ul className="space-y-2.5">{group.map((row) => card(row, country))}</ul>
+            </section>
           ))}
-        </ul>
+        </div>
+      ) : (
+        <ul className="space-y-2.5">{shown.map((row) => card(row))}</ul>
       )}
     </div>
   )
@@ -183,20 +262,25 @@ function DestinationCard({
   row,
   groupSize,
   isMine,
+  isMyDownvote,
   expanded,
   onToggle,
   onVote,
+  onDownvote,
   canVote,
 }: {
   row: DestinationRow
   groupSize: number
   isMine: boolean
+  isMyDownvote: boolean
   expanded: boolean
   onToggle: () => void
   onVote: () => void
+  onDownvote: () => void
   canVote: boolean
 }) {
-  const { costs, allFit, fitsCount, voters } = row
+  const { costs, allFit, fitsCount, voters, downvoters, score } = row
+  const hasVotes = voters.length > 0 || downvoters.length > 0
   const price =
     row.minTotal === row.maxTotal ? formatUsd(row.minTotal) : `${formatUsd(row.minTotal)}–${formatUsd(row.maxTotal)}`
 
@@ -204,7 +288,7 @@ function DestinationCard({
     <li
       className={cn(
         'overflow-hidden rounded-2xl border bg-card transition-colors',
-        isMine ? 'border-primary ring-1 ring-primary' : 'border-border',
+        isMine ? 'border-primary ring-1 ring-primary' : isMyDownvote ? 'border-[#b4442a]/50' : 'border-border',
       )}
     >
       <div className="flex items-center gap-3 p-4 sm:gap-4">
@@ -229,6 +313,17 @@ function DestinationCard({
               {allFit ? <Check className="size-3.5" /> : <X className="size-3.5" />}
               {allFit ? 'Fits everyone' : `Fits ${fitsCount} of ${groupSize}`}
             </span>
+            {hasVotes && (
+              <span
+                className={cn(
+                  'text-xs font-medium tabular-nums',
+                  score > 0 ? 'text-[#1f7a4d]' : score < 0 ? 'text-[#b4442a]' : 'text-muted-foreground',
+                )}
+                title={`${voters.length} up × 1, ${downvoters.length} down × ${DOWNVOTE_WEIGHT}`}
+              >
+                Score {score > 0 ? `+${score}` : score}
+              </span>
+            )}
             <ChevronDown
               className={cn('size-4 text-muted-foreground transition-transform', expanded && 'rotate-180')}
             />
@@ -236,21 +331,40 @@ function DestinationCard({
         </button>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <button
-            type="button"
-            onClick={onVote}
-            disabled={!canVote}
-            aria-pressed={isMine}
-            className={cn(
-              'min-w-[84px] rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50',
-              isMine
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'border border-border bg-background hover:border-foreground/50',
-            )}
-          >
-            {isMine ? 'Voted' : 'Vote'}
-            {voters.length > 0 && <span className="ml-1.5 tabular-nums opacity-80">{voters.length}</span>}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onDownvote}
+              disabled={!canVote}
+              aria-pressed={isMyDownvote}
+              aria-label={isMyDownvote ? 'Remove downvote' : 'Downvote'}
+              title={`Really don’t want to go (−${DOWNVOTE_WEIGHT})`}
+              className={cn(
+                'inline-flex h-9 items-center gap-1 rounded-full px-3 text-sm font-semibold transition-colors disabled:opacity-50',
+                isMyDownvote
+                  ? 'bg-[#b4442a] text-white hover:bg-[#b4442a]/90'
+                  : 'border border-border bg-background text-muted-foreground hover:border-[#b4442a]/60 hover:text-[#b4442a]',
+              )}
+            >
+              <ThumbsDown className="size-4" />
+              {downvoters.length > 0 && <span className="tabular-nums">{downvoters.length}</span>}
+            </button>
+            <button
+              type="button"
+              onClick={onVote}
+              disabled={!canVote}
+              aria-pressed={isMine}
+              className={cn(
+                'min-w-[84px] rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50',
+                isMine
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'border border-border bg-background hover:border-foreground/50',
+              )}
+            >
+              {isMine ? 'Voted' : 'Vote'}
+              {voters.length > 0 && <span className="ml-1.5 tabular-nums opacity-80">{voters.length}</span>}
+            </button>
+          </div>
           {voters.length > 0 && (
             <div className="flex -space-x-1.5">
               {voters.slice(0, 5).map((v) => (
@@ -262,6 +376,11 @@ function DestinationCard({
                 </span>
               )}
             </div>
+          )}
+          {downvoters.length > 0 && (
+            <p className="max-w-[160px] truncate text-xs text-[#b4442a]">
+              No from {downvoters.map((v) => v.data.name).join(', ')}
+            </p>
           )}
         </div>
       </div>

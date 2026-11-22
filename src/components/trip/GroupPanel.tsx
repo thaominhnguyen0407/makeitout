@@ -8,7 +8,7 @@ import { formatUsd, getCity } from '../../lib/places'
 
 /** Left column: join / your entry, then everyone in the group. */
 export function GroupPanel({ trip }: { trip: TripState }) {
-  const { me, travelers, travelerMut, voteMut, myVote, setMyId } = trip
+  const { me, travelers, travelerMut, voteMut, myVote, downvoteMut, myDownvotes, setMyId } = trip
   const { success, error } = useToast()
   const [editing, setEditing] = useState(false)
 
@@ -16,9 +16,10 @@ export function GroupPanel({ trip }: { trip: TripState }) {
 
   async function leave() {
     if (!me) return
-    if (!window.confirm('Remove yourself from this trip? Your vote goes too.')) return
+    if (!window.confirm('Remove yourself from this trip? Your votes go too.')) return
     try {
       if (myVote) await voteMut.removeConfirmed(myVote.recordId)
+      for (const d of myDownvotes.values()) await downvoteMut.removeConfirmed(d.recordId)
       await travelerMut.removeConfirmed(me.recordId)
       setMyId(null)
       setEditing(false)

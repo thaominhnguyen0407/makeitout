@@ -5,7 +5,7 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { useMutations, useQuery, type RecordData } from 'deepspace'
-import type { TripInfo, Traveler, Vote } from '../../schemas/trip-schemas'
+import type { Downvote, TripInfo, Traveler, Vote } from '../../schemas/trip-schemas'
 import {
   DESTINATIONS,
   estimateTrip,
@@ -58,7 +58,13 @@ export interface DestinationRow {
   /** The tightest traveler's headroom — higher means more comfortable for everyone. */
   tightest: number
   voters: RecordData<Traveler>[]
+  downvoters: RecordData<Traveler>[]
+  /** upvotes − DOWNVOTE_WEIGHT × downvotes. */
+  score: number
 }
+
+/** One downvote cancels out this many upvotes. */
+export const DOWNVOTE_WEIGHT = 3
 
 /** Most multi-city options to show, and how often one city may appear in them. */
 const MAX_ROUTES_SHOWN = 40
@@ -70,7 +76,10 @@ const byFit = (a: DestinationRow, b: DestinationRow) =>
 type Priced = { traveler: RecordData<Traveler>; origin: City }
 
 function makeRow(
-  base: Omit<DestinationRow, 'costs' | 'fitsCount' | 'allFit' | 'minTotal' | 'maxTotal' | 'tightest'>,
+  base: Omit<
+    DestinationRow,
+    'costs' | 'fitsCount' | 'allFit' | 'minTotal' | 'maxTotal' | 'tightest' | 'score'
+  >,
   priced: Priced[],
   estimate: (origin: City) => CostEstimate,
 ): DestinationRow {
@@ -89,10 +98,14 @@ function makeRow(
     minTotal: totals.length ? Math.min(...totals) : 0,
     maxTotal: totals.length ? Math.max(...totals) : 0,
     tightest: costs.length ? Math.min(...costs.map((c) => c.headroom)) : 0,
+    score: base.voters.length - DOWNVOTE_WEIGHT * base.downvoters.length,
   }
 }
 
-function routeRow(route: Route, nights: number, priced: Priced[], voters: RecordData<Traveler>[]) {
+type Voters = Pick<DestinationRow, 'voters' | 'downvoters'>
+const NO_VOTERS: Voters = { voters: [], downvoters: [] }
+
+function routeRow(route: Route, nights: number, priced: Priced[], { voters, downvoters }: Voters) {
   const { stops } = route
   const countries = [...new Set(stops.map((s) => s.country))]
   return makeRow(
@@ -106,6 +119,7 @@ function routeRow(route: Route, nights: number, priced: Priced[], voters: Record
       nightsPer: splitNights(nights, stops.length),
       legs: legsCost(stops),
       voters,
+      downvoters,
     },
     priced,
     (origin) => estimateRoute(origin, stops, nights),
@@ -116,10 +130,12 @@ export function useTrip(tripId: string) {
   const info = useQuery<TripInfo>('trip_info')
   const travelersQ = useQuery<Traveler>('travelers', { orderBy: 'createdAt', orderDir: 'asc' })
   const votesQ = useQuery<Vote>('votes')
+  const downvotesQ = useQuery<Downvote>('downvotes')
 
   const infoMut = useMutations<TripInfo>('trip_info')
   const travelerMut = useMutations<Traveler>('travelers')
   const voteMut = useMutations<Vote>('votes')
+  const downvoteMut = useMutations<Downvote>('downvotes')
 
   const [myId, setMyIdState] = useState<string | null>(() => getMyTravelerId(tripId))
   const setMyId = useCallback(
@@ -143,6 +159,15 @@ export function useTrip(tripId: string) {
     [votesQ.records, travelerById],
   )
   const myVote = me ? (votes.find((v) => v.data.travelerId === me.recordId) ?? null) : null
+  const downvotes = useMemo(
+    () => downvotesQ.records.filter((v) => travelerById.has(v.data.travelerId)),
+    [downvotesQ.records, travelerById],
+  )
+  /** My downvote records, keyed by option id. */
+  const myDownvotes = useMemo(
+    () => new Map(me ? downvotes.filter((v) => v.data.travelerId === me.recordId).map((v) => [v.data.destinationId, v]) : []),
+    [downvotes, me],
+  )
 
   const priced = useMemo(
     () =>
@@ -153,14 +178,22 @@ export function useTrip(tripId: string) {
   )
 
   const votersById = useMemo(() => {
-    const map = new Map<string, RecordData<Traveler>[]>()
+    const map = new Map<string, Voters>()
+    const entry = (id: string) => {
+      let e = map.get(id)
+      if (!e) map.set(id, (e = { voters: [], downvoters: [] }))
+      return e
+    }
     for (const v of votes) {
       const t = travelerById.get(v.data.travelerId)
-      if (!t) continue
-      map.set(v.data.destinationId, [...(map.get(v.data.destinationId) ?? []), t])
+      if (t) entry(v.data.destinationId).voters.push(t)
+    }
+    for (const v of downvotes) {
+      const t = travelerById.get(v.data.travelerId)
+      if (t) entry(v.data.destinationId).downvoters.push(t)
     }
     return map
-  }, [votes, travelerById])
+  }, [votes, downvotes, travelerById])
 
   const rows = useMemo<DestinationRow[]>(
     () =>
@@ -175,7 +208,7 @@ export function useTrip(tripId: string) {
             stops: [destination],
             nightsPer: [nights],
             legs: 0,
-            voters: votersById.get(destination.id) ?? [],
+            ...(votersById.get(destination.id) ?? NO_VOTERS),
           },
           priced,
           (origin) => estimateTrip(origin, destination, nights),
@@ -191,7 +224,7 @@ export function useTrip(tripId: string) {
     if (routesAllowed && priced.length > 0) {
       const ranked = allRoutes()
         .filter((r) => nights >= r.stops.length * MIN_NIGHTS_PER_STOP)
-        .map((r) => routeRow(r, nights, priced, votersById.get(r.id) ?? []))
+        .map((r) => routeRow(r, nights, priced, votersById.get(r.id) ?? NO_VOTERS))
         .sort(byFit)
       // 3-stop routes cost more, so they'd never make a single shared top list.
       // Pick each length separately, keeping it varied: each city appears in at
@@ -211,7 +244,7 @@ export function useTrip(tripId: string) {
         }
       }
     }
-    // A route someone voted for always stays listed, even if it dropped out.
+    // A route someone voted on always stays listed, even if it dropped out.
     for (const [id, voters] of votersById) {
       if (!isRouteId(id) || out.some((r) => r.id === id)) continue
       const route = routeFromId(id)
@@ -220,17 +253,20 @@ export function useTrip(tripId: string) {
     return out.sort(byFit)
   }, [routesAllowed, priced, votersById, nights])
 
+  // The favourite is the best score; a place with a net-negative or zero score never leads.
   const leader = useMemo(() => {
-    const voted = [...rows, ...routeRows].filter((r) => r.voters.length > 0)
-    if (!voted.length) return null
-    const top = Math.max(...voted.map((r) => r.voters.length))
-    const tied = voted.filter((r) => r.voters.length === top)
-    return { rows: tied, votes: top }
+    const liked = [...rows, ...routeRows].filter((r) => r.score > 0)
+    if (!liked.length) return null
+    const top = Math.max(...liked.map((r) => r.score))
+    return { rows: liked.filter((r) => r.score === top), score: top }
   }, [rows, routeRows])
 
   return {
     status:
-      info.status === 'ready' && travelersQ.status === 'ready' && votesQ.status === 'ready'
+      info.status === 'ready' &&
+      travelersQ.status === 'ready' &&
+      votesQ.status === 'ready' &&
+      downvotesQ.status === 'ready'
         ? ('ready' as const)
         : info.status === 'error' || travelersQ.status === 'error'
           ? ('error' as const)
@@ -241,6 +277,8 @@ export function useTrip(tripId: string) {
     votes,
     me,
     myVote,
+    downvotes,
+    myDownvotes,
     rows,
     routeRows,
     routesAllowed,
@@ -249,6 +287,7 @@ export function useTrip(tripId: string) {
     infoMut,
     travelerMut,
     voteMut,
+    downvoteMut,
   }
 }
 

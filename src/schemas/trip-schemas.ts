@@ -58,8 +58,24 @@ export const votesSchema: CollectionSchema = {
   permissions: openTo(['travelerId', 'destinationId']),
 }
 
-export const tripSchemas: CollectionSchema[] = [tripInfoSchema, travelersSchema, votesSchema]
+/**
+ * Downvotes: "I really don't want to go here". A traveler can downvote any
+ * number of places, but each place only once. Each downvote counts as −3 in
+ * the score (see useTrip.ts), so one strong "no" outweighs a few "yes"es.
+ */
+export const downvotesSchema: CollectionSchema = {
+  name: 'downvotes',
+  columns: [
+    { name: 'travelerId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
+    { name: 'destinationId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
+  ],
+  uniqueOn: ['travelerId', 'destinationId'],
+  permissions: openTo(['travelerId', 'destinationId']),
+}
+
+export const tripSchemas: CollectionSchema[] = [tripInfoSchema, travelersSchema, votesSchema, downvotesSchema]
 
 export type TripInfo = { key: string; name: string; nights: number }
 export type Traveler = { name: string; originId: string; budget: number }
 export type Vote = { travelerId: string; destinationId: string }
+export type Downvote = { travelerId: string; destinationId: string }
