@@ -95,7 +95,12 @@ test('unlimited votes; a downvote outweighs upvotes, live for everyone', async (
   await expect(card(b).getByText('Score +1')).toBeVisible()
   await expect(card(a).getByRole('button', { name: /^Voted/ })).toBeVisible()
   await expect(porto(a).getByRole('button', { name: /^Voted/ })).toBeVisible()
-  await expect(b.getByText('Tied for the lead')).toBeVisible()
+  // A tie shows each place as its own pill, not one joined-up line.
+  await expect(b.getByText('2 tied for the lead')).toBeVisible()
+  const tied = b.getByRole('list', { name: 'Tied options' }).getByRole('listitem')
+  await expect(tied).toHaveCount(2)
+  await expect(tied.filter({ hasText: /^Lisbon$/ })).toHaveCount(1)
+  await expect(tied.filter({ hasText: /^Porto$/ })).toHaveCount(1)
   await expect(a.getByText('voted on 2')).toBeVisible()
   // Taking back the Porto vote leaves Lisbon alone.
   await porto(a).getByRole('button', { name: /^Voted/ }).click()
@@ -110,7 +115,7 @@ test('unlimited votes; a downvote outweighs upvotes, live for everyone', async (
   // Ben changes his mind and votes for it: the downvote is taken back.
   await card(b).getByRole('button', { name: /^Vote/ }).click()
   await expect(card(a).getByText('Score +2')).toBeVisible()
-  await expect(a.getByText('2 points')).toBeVisible()
+  await expect(a.getByText('+2 points')).toBeVisible()
   await expect(card(a).getByText('No from Ben')).toHaveCount(0)
 
   expect(errors).toEqual([])

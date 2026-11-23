@@ -10,6 +10,9 @@ type Filter = 'fits' | 'all'
 type Mode = 'single' | 'route'
 type Sort = 'budget' | 'country'
 
+/** Tied favourites shown as pills before collapsing into "+N more". */
+const MAX_TIED_SHOWN = 6
+
 /**
  * Group options under each country they visit, countries A→Z. A multi-city
  * route appears under every one of its countries. Within a country the
@@ -102,17 +105,38 @@ export function DestinationList({ trip }: { trip: TripState }) {
   return (
     <div>
       {leader && (
-        <div className="mb-5 flex items-center gap-3 rounded-2xl bg-foreground px-5 py-4 text-background">
-          <Trophy className="size-5 shrink-0 text-primary" />
-          <div className="min-w-0">
+        <div className="mb-5 flex items-start gap-3 rounded-2xl bg-foreground px-5 py-4 text-background">
+          <Trophy className="mt-0.5 size-5 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
             <p className="text-xs uppercase tracking-wider opacity-70">
-              {leader.rows.length > 1 ? 'Tied for the lead' : 'Group favourite so far'}
+              {leader.rows.length > 1
+                ? `${leader.rows.length} tied for the lead`
+                : 'Group favourite so far'}
             </p>
-            <p className="truncate font-display text-lg font-semibold">
-              {leader.rows.map((r) => r.title).join(' · ')}
-            </p>
+            {leader.rows.length === 1 ? (
+              <p className="truncate font-display text-lg font-semibold">{leader.rows[0].title}</p>
+            ) : (
+              // Each tied option is its own pill, so a tie never reads as one multi-stop trip.
+              <ul aria-label="Tied options" className="mt-1.5 flex flex-wrap gap-1.5">
+                {leader.rows.slice(0, MAX_TIED_SHOWN).map((r) => (
+                  <li
+                    key={r.id}
+                    className="max-w-full truncate rounded-full bg-background/15 px-3 py-1 font-display text-sm font-semibold"
+                  >
+                    {r.title}
+                  </li>
+                ))}
+                {leader.rows.length > MAX_TIED_SHOWN && (
+                  <li className="rounded-full px-2 py-1 text-sm opacity-70">
+                    +{leader.rows.length - MAX_TIED_SHOWN} more
+                  </li>
+                )}
+              </ul>
+            )}
           </div>
-          <p className="ml-auto shrink-0 text-sm tabular-nums opacity-80">
+          <p className="shrink-0 text-sm tabular-nums opacity-80">
+            {leader.rows.length > 1 ? 'each ' : ''}
+            {leader.score > 0 ? '+' : ''}
             {leader.score} {leader.score === 1 ? 'point' : 'points'}
           </p>
         </div>
