@@ -56,14 +56,46 @@ drafted this writeup. Problems it found by forming and testing a hypothesis:
 
 ## What I verified and changed
 
-[Add your own.]
+**How I tested.** I used it on different devices, joining as different
+people, and tried 3 departure countries with 3 different budgets each to see
+what it suggested. I also shared it with my own friend group: it helped us
+start the planning conversation and agree on where to go before searching
+for real flights and hotels.
+
+**What I changed from that testing:**
+
+- **More options.** The point of the app is to show an international group
+  the variety of places they could go, so I expanded it from 45 to 200
+  destinations and added 2–3 city, multi-country trips.
+- **Better price estimates.** I checked a few real flight prices against the
+  estimates. Most were close, but flights with layovers or in peak season
+  were still significantly off, and short flights where budget airlines
+  dominate were overestimated. I halved the fare inside those budget-airline
+  markets (Europe, Southeast Asia, and within India, Mexico and Brazil).
+- **Clear that prices are estimates.** The homepage now says what the app is
+  for (starting the conversation), what isn't included, and to check real
+  prices before booking.
+- **Voting.** Testing the voting myself, I realised that for a conversation
+  starter, votes shouldn't be capped, so everyone can vote for every place
+  they like. And if one person really doesn't want to go somewhere, that
+  should count more than others liking it (a downvote is −3), because the
+  whole point is finding where everyone, from everywhere, can go together.
 
 ## Limitations and next steps
 
 - Prices are estimates: straight-line distance fares (halved inside
-  budget-airline markets) + nights × a typical daily cost. No dates or
-  seasons; not compared against real fares.
+  budget-airline markets) + nights × a typical daily cost. No dates, seasons
+  or layovers, so they can be well off for peak-season or connecting
+  flights; only spot-checked against a few real fares.
 - Fixed list of 200 destinations and 218 starting cities.
-- Unlimited votes can create big ties; no cap per person yet.
+- Votes are uncapped by design, so big ties are possible.
 
-[Add what you'd do next.]
+**Next steps:**
+
+1. **Real prices and travel dates.** A real fare and hotel scanner for the
+   group's top picks, once dates are set. This needs a pricing structure
+   first, because each search costs money: credits, usage-based, or a
+   subscription.
+2. **Group rules.** Let each group set its own rules, such as how many votes
+   each person gets, or what kind of places and culture they want.
+3. **Photos of each place**, so people get the vibe of a city immediately.
